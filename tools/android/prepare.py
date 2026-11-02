@@ -10,6 +10,7 @@ import zipfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 ROM_SHA = "b4bd50e4131b027c334547b4524e2dbbd4227130"
+EU_SHA = "cff199b36ff173fb6faf152653d1bccf87c26fb7"
 BIOS_SHA = "2e41f9d30ecdf1c4540edf89ac16f49bf327edb7"
 
 def publish_generated(source, destination):
@@ -35,51 +36,66 @@ def load_rom(path):
         with zipfile.ZipFile(path) as archive:
             candidates = [e for e in archive.infolist() if not e.is_dir() and e.filename.lower().endswith((".gba", ".agb"))]
             if len(candidates) != 1 or candidates[0].file_size != 16777216:
-                raise ValueError("ZIP must contain exactly one 16 MiB USA .gba file")
+                raise ValueError("ZIP must contain exactly one 16 MiB USA or Europe .gba file")
             data = archive.read(candidates[0])
     else:
         if path.stat().st_size != 16777216:
-            raise ValueError("USA ROM must be 16 MiB")
+            raise ValueError("ROM must be 16 MiB")
         data = path.read_bytes()
-    if hashlib.sha1(data).hexdigest() != ROM_SHA:
-        raise ValueError("ROM SHA-1 mismatch: unmodified Minish Cap (USA) required")
+    if hashlib.sha1(data).hexdigest() not in {ROM_SHA, EU_SHA}:
+        raise ValueError("ROM SHA-1 mismatch: unmodified Minish Cap (USA or Europe) required")
     return data
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--rom", type=pathlib.Path, required=True)
+    p.add_argument("--rom", type=pathlib.Path, action="append", required=True,
+                   help="USA or Europe ROM/ZIP; repeat to generate both corpora")
     p.add_argument("--tool", type=pathlib.Path, default=ROOT / "build/host/gba_recompile")
     args = p.parse_args()
-    data = load_rom(args.rom)
+    inputs = [(load_rom(path)) for path in args.rom]
     firmware = ROOT / "android/firmware/open_gba_bios.firmware"
     if hashlib.sha1(firmware.read_bytes()).hexdigest() != BIOS_SHA:
         raise ValueError("Open firmware integrity check failed")
     if not args.tool.is_file():
         raise ValueError("Build the host gba_recompile tool first; see ANDROID.md")
-    rom = ROOT / "roms/minishcap_usa.gba"
-    rom.parent.mkdir(exist_ok=True)
-    if not rom.exists() or hashlib.sha1(rom.read_bytes()).hexdigest() != ROM_SHA:
-        with tempfile.NamedTemporaryFile(dir=rom.parent, delete=False) as out:
-            out.write(data)
-        pathlib.Path(out.name).replace(rom)
     def run(*opts):
         subprocess.run([str(args.tool.resolve()), *opts], cwd=ROOT, check=True)
     (ROOT / "build").mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="codegen-", dir=ROOT / "build") as temp:
         staging = pathlib.Path(temp)
         run("--bios", str(firmware), "--config", "config/open_bios.toml", "--out", str(staging / "bios"))
-        run("--rom", str(rom), "--config", "symbols/minishcap.toml",
-            "--config", "symbols/minishcap_reviewed.toml", "--symbols", "symbols/imported_symbols.tsv",
-            "--data-symbols", "symbols/imported_data_symbols.tsv",
-            # Default 4096 is a bring-up budget. Required symbol closure already
-            # exceeds it, starving later automatic RAM/callback roots.
-            "--max-functions", "100000", "--out", str(staging / "rom"))
-        dispatch = (staging / "rom/dispatch_table.cpp").read_text()
-        for pc in ("0300643C", "030065A8"):
-            if f"0x{pc}u" not in dispatch:
-                raise ValueError(f"Missing observed RAM continuation {pc}; generation incomplete")
+        generated = []
+        for data in inputs:
+            sha = hashlib.sha1(data).hexdigest()
+            europe = sha == EU_SHA
+            region = "eu" if europe else "usa"
+            rom = ROOT / f"roms/minishcap_{region}.gba"
+            rom.parent.mkdir(exist_ok=True)
+            if not rom.exists() or hashlib.sha1(rom.read_bytes()).hexdigest() != sha:
+                with tempfile.NamedTemporaryFile(dir=rom.parent, delete=False) as out:
+                    out.write(data)
+                pathlib.Path(out.name).replace(rom)
+            directory = staging / region
+            if europe:
+                opts = ["--config", "symbols/eu/minishcap_eu.toml",
+                        "--config", "symbols/eu/minishcap_eu_symbols.toml",
+                        "--symbols", "symbols/eu/imported_symbols.tsv",
+                        "--data-symbols", "symbols/eu/imported_data_symbols.tsv",
+                        "--output-prefix", "eu_"]
+            else:
+                opts = ["--config", "symbols/minishcap.toml",
+                        "--config", "symbols/minishcap_reviewed.toml",
+                        "--symbols", "symbols/imported_symbols.tsv",
+                        "--data-symbols", "symbols/imported_data_symbols.tsv"]
+            run("--rom", str(rom), *opts, "--max-functions", "100000", "--out", str(directory))
+            dispatch = (directory / ("eu_dispatch_table.cpp" if europe else "dispatch_table.cpp")).read_text()
+            for pc in (("03006164", "030065AC") if europe else ("0300643C", "030065A8")):
+                if f"0x{pc}u" not in dispatch:
+                    raise ValueError(f"Missing RAM continuation {pc}; generation incomplete")
+            generated.append((directory, ROOT / "generated/eu" if europe else ROOT / "generated"))
         publish_generated(staging / "bios", ROOT / "generated/open_bios")
-        publish_generated(staging / "rom", ROOT / "generated")
+        for source, destination in generated:
+            publish_generated(source, destination)
 
 if __name__ == "__main__":
     main()

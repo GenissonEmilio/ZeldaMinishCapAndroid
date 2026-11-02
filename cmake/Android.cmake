@@ -6,15 +6,18 @@ set(GBARECOMP_ENABLE_MODS ON CACHE BOOL "Mod catalog" FORCE)
 set(RECOMP_UI_ENABLE_MODS ON CACHE BOOL "Mod UI" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "Host tests are separate" FORCE)
 if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/generated/dispatch_table.cpp" OR
+   NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/generated/eu/eu_dispatch_table.cpp" OR
    NOT EXISTS "${GBARECOMP_GENERATED_BIOS_DIR}/bios_dispatch_table.cpp")
-    message(FATAL_ERROR "Generate ROM and open BIOS first: tools/android/prepare.py --rom <USA.gba>")
+    message(FATAL_ERROR "Generate USA, EU and open BIOS first: tools/android/prepare.py --rom <USA.gba> --rom <EU.gba>")
 endif()
 add_subdirectory("${GBARECOMP_ROOT}" gbarecomp_build EXCLUDE_FROM_ALL)
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/AndroidRenderer.cmake")
-file(GLOB MINISH_GENERATED CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/generated/*.cpp")
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/AndroidRegions.cmake")
+file(GLOB MINISH_GENERATED CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/generated/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/generated/eu/*.cpp")
 add_library(main SHARED src/main.cpp src/game_config.cpp src/minish_extended_view.cpp
     src/mods/minish_adaptive_view_plugin.cpp src/android_port.cpp
-    src/photo_menu.cpp src/game_photo_album.cpp ${MINISH_GENERATED})
+    src/photo_menu.cpp src/game_photo_album.cpp src/rom_regions.cpp ${MINISH_GENERATED})
 set_source_files_properties(src/main.cpp PROPERTIES COMPILE_DEFINITIONS "main=MinishMain")
 target_include_directories(main PRIVATE src "${GBARECOMP_ROOT}/src/armv4t"
     "${GBARECOMP_ROOT}/src/gba" "${GBARECOMP_ROOT}/src/runtime" "${GBARECOMP_ROOT}/src/debug")

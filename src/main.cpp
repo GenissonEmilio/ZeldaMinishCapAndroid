@@ -23,6 +23,7 @@
 #include "minish_extended_view.h"
 #if defined(__ANDROID__)
 #include "android_port.h"
+#include "rom_regions.h"
 #endif
 
 #if defined(GBAGAME_RECOMP_UI)
@@ -85,6 +86,17 @@ int main(int argc, char** argv) {
     opts.launcher_region    = "USA";
     opts.launcher_game_config = "game.toml";   // prefill ROM/BIOS from [rom]/[bios]
 #if defined(__ANDROID__)
+    if (minish::is_europe()) {
+        opts.builtin_rom_sha1 = "cff199b36ff173fb6faf152653d1bccf87c26fb7";
+        opts.builtin_rom_crc32 = 0xE8637292u;
+        opts.mod_game_id = "minish-cap-eu";
+        opts.mod_owns_adaptive_view = false;
+        opts.launcher_region = "Europe";
+        // Adaptive view is a USA-specific mod, gated by its own ROM identity.
+        opts.extended_view_init = nullptr;
+        opts.max_resize_view_width = 240;
+        opts.resize_driven_view = false;
+    }
     minish::configure_android(opts);
 #endif
     // Save: game.toml [save] has no explicit path — the runtime derives

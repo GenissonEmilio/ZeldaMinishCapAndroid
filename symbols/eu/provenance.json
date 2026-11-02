@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/zeldaret/tmc",
+  "revision": "5ab63f00e522ff69c5bc987e379f0163943f2833",
+  "region": "EU",
+  "sha1": "cff199b36ff173fb6faf152653d1bccf87c26fb7",
+  "size": 16777216,
+  "method": "byte-matching tmc_eu.gba; readelf symbols/sections and linker map"
+}

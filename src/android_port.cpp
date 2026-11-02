@@ -6,6 +6,7 @@
 #include "pixel_presenter.h"
 #include "zelda_icons.h"
 #include "game_photo_album.h"
+#include "rom_regions.h"
 #include "runtime_bus_bridge.h"
 #include "gba_bus.h"
 #include <jni.h>
@@ -50,7 +51,7 @@ void capture_frame(const std::uint8_t* rgb,int w,int h) {
     if(method && data) {
         env->SetByteArrayRegion(data,0,w*h*3,reinterpret_cast<const jbyte*>(rgb));
         int area=-1,room=-1,x=-1,y=-1;
-        if(auto* bus=gbarecomp::active_bus();bus && bus->iwram_ptr()[0x1002]==2) {
+        if(auto* bus=gbarecomp::active_bus();!minish::is_europe() && bus && bus->iwram_ptr()[0x1002]==2) {
             const auto* i=bus->iwram_ptr();const auto* e=bus->ewram_ptr();
             const auto* location=i+0xBF0;
             if(i[0x1004]==7) location=e+0x32EDC; // UI backup while a subtask owns RAM.
@@ -97,7 +98,7 @@ int menu_set(const char* key, int value) {
 }
 const RecompRuntimeUiItem menu_items[]{ {
     "minish.album", "Album", "Gerenciar fotos e anotacoes",
-    "A camera e o album ficam em START, depois da aba de itens (R).",
+    "Galeria Android. A pagina de camera no inventario requer a ROM USA.",
     RECOMP_RUNTIME_UI_ACTION,0,0,0,nullptr,0,nullptr
 }, {
     "minish.pixels", "Graphics", "Estilo dos pixels",
@@ -226,7 +227,8 @@ void draw(HostOverlay* o) {
 namespace minish {
 void configure_android(gbarecomp::RunOptions& opts) {
     minish::set_capture_sink(&capture_frame);
-    minish::configure_game_photo_album();
+    if (!minish::is_europe()) minish::configure_game_photo_album();
+    else minish::set_frame_filter(nullptr);
     opts.input_frame=&input; opts.host_overlay=&draw;
     opts.touch_pad_default=0;
     opts.touch_gesture_claims=gbarecomp::kTouchClaimLongPress;
@@ -257,8 +259,13 @@ extern "C" __attribute__((visibility("default"))) int SDL_main(int argc,char** a
     unsetenv("SDL_AUDIODRIVER");
     minish::set_pixel_mode(minish::PixelMode::Smooth);
     std::vector<char*> args;
+    bool europe=false;
     for(int i=0;i<argc;++i) {
-        if(std::string(argv[i])=="--touch-size" && i+1<argc) {
+        if(std::string(argv[i])=="--minish-region" && i+1<argc) {
+            const std::string region=argv[++i];
+            if(region!="usa" && region!="eu") return 2;
+            europe=region=="eu";
+        } else if(std::string(argv[i])=="--touch-size" && i+1<argc) {
             scale=std::clamp(std::atoi(argv[++i])/100.f,.8f,1.3f);
         } else if(std::string(argv[i])=="--touch-opacity" && i+1<argc) {
             opacity=std::clamp(std::atoi(argv[++i])*255/100,65,240);
@@ -271,6 +278,7 @@ extern "C" __attribute__((visibility("default"))) int SDL_main(int argc,char** a
             SDL_setenv("GBARECOMP_STRICT_STATIC","1",1);
         } else args.push_back(argv[i]);
     }
+    minish::select_europe(europe);
     int count=args.size(); args.push_back(nullptr);
     return MinishMain(count,args.data());
 }

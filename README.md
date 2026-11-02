@@ -13,8 +13,11 @@ Código-base: **mstan/MinishCapRecomp**, com o mesmo motor **gbarecomp** usado e
 
 A BIOS substituta **Cult of GBA BIOS** (MIT) acompanha o aplicativo. O jogo,
 a BIOS proprietária da Nintendo e o código gerado da ROM não estão no Git.
-Importe sua própria cópia americana original de 16 MiB (SHA-1
-`b4bd50e4131b027c334547b4524e2dbbd4227130`).
+Importe sua própria cópia original USA ou Europe de 16 MiB. A região é
+identificada por SHA-1 e seleciona seu próprio corpus recompilado. A versão
+Europe inclui inglês, francês, alemão, espanhol e italiano; escolha o idioma
+nas opções do jogo. Saves e estados das duas regiões ficam separados.
+O álbum no inventário e a visão ampliada continuam restritos à USA.
 
 Veja [ANDROID.md](ANDROID.md) para instalação, compilação, limites e validação.
 As instruções abaixo pertencem à base upstream para desktop.
@@ -74,9 +77,13 @@ redistributed**; you supply your own legally-dumped copy.
 | Target            | Game                                  | ROM (USA) | SHA-1                                      | Debug port |
 |-------------------|---------------------------------------|-----------|-------------------------------------------|------------|
 | `MinishCapRecomp` | The Legend of Zelda: The Minish Cap   | USA       | `b4bd50e4131b027c334547b4524e2dbbd4227130` | 19842      |
+| Android | The Legend of Zelda: The Minish Cap | Europe (`BZMP`) | `cff199b36ff173fb6faf152653d1bccf87c26fb7` | 19842 |
 
 The runtime **refuses to launch on an unrecognized ROM** — the SHA-1 must match.
-Save chip: EEPROM. (Other regions can be added by checksum in `config/<region>.toml`.)
+Save chip: EEPROM. A new region requires its verified checksum, region-specific
+symbols/layout and a regenerated corpus. Adding a checksum alone cannot make
+USA-generated code execute a different ROM. Android includes separate USA/EU
+corpora; the desktop instructions below continue to build the USA target.
 
 ## Quick start
 

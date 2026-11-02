@@ -32,12 +32,51 @@ public class RomImporterTest {
             reject(zip("readme.txt",new byte[]{1}),dest);
             reject(zip("padding.txt",new byte[32*1024*1024+1]),dest);
             reject(new byte[]{'P','K',3,4,0,0},dest);
+            for(String path:args) {
+                byte[] valid=Files.readAllBytes(Path.of(path));
+                RomImporter.Region imported=RomImporter.importRom(new ByteArrayInputStream(valid),dest);
+                if(dest.length()!=RomImporter.SIZE || imported!=RomImporter.identify(dest))
+                    throw new AssertionError("valid owner ROM import/identification failed");
+                if(valid[0xaf]=='P' && imported!=RomImporter.Region.EUROPE)
+                    throw new AssertionError("EU ROM selected USA corpus");
+                if(valid[0xaf]=='E' && imported!=RomImporter.Region.USA)
+                    throw new AssertionError("USA ROM selected EU corpus");
+                if(RomImporter.importRom(new ByteArrayInputStream(zip("game.gba",valid)),dest)!=imported)
+                    throw new AssertionError("ZIP region differs from raw region");
+                ByteArrayOutputStream bytes=new ByteArrayOutputStream();
+                try(ZipOutputStream out=new ZipOutputStream(bytes)) {
+                    for(String name:new String[]{"one.gba","two.gba"}) {
+                        out.putNextEntry(new ZipEntry(name));out.write(valid);out.closeEntry();
+                    }
+                }
+                reject(bytes.toByteArray(),dest);
+                cases+=2;
+            }
+            if(RomImporter.Region.USA.savePath.equals(RomImporter.Region.EUROPE.savePath))
+                throw new AssertionError("regions share a save file");
+            File library=folder.resolve("roms").toFile();
+            for(String path:args) {
+                RomImporter.Region imported;
+                try(InputStream in=new FileInputStream(path)) { imported=RomImporter.importToLibrary(in,library); }
+                File installed=new File(library,"minishcap_"+imported.id+".gba");
+                if(RomImporter.identify(installed)!=imported) throw new AssertionError("wrong library path/identity");
+                cases++;
+            }
             if(args.length>0) {
-                try(InputStream in=new FileInputStream(args[0])) { RomImporter.importRom(in,dest); }
-                if(dest.length()!=RomImporter.SIZE) throw new AssertionError("valid owner ROM import failed");
+                int count=library.listFiles().length;
+                try {
+                    RomImporter.importToLibrary(new ByteArrayInputStream(new byte[16]),library);
+                    throw new AssertionError("invalid library import accepted");
+                } catch(IOException expected) { }
+                if(library.listFiles().length!=count) throw new AssertionError("failed library import left files");
+                for(File file:library.listFiles()) RomImporter.identify(file);
                 cases++;
             }
             System.out.println(cases+" import checks passed");
-        } finally { for(File f:folder.toFile().listFiles()) f.delete(); Files.delete(folder); }
+        } finally {
+            try(java.util.stream.Stream<Path> paths=Files.walk(folder)) {
+                for(Path path:paths.sorted(java.util.Comparator.reverseOrder()).toArray(Path[]::new)) Files.delete(path);
+            }
+        }
     }
 }

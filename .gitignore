@@ -71,6 +71,7 @@ generated/*.c
 generated/*.cpp
 generated/*.h
 generated/*.json
+generated/eu/
 src/gen/
 
 # ─────────────────────────────────────────────────────────────────────

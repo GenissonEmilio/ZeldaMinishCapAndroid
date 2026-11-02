@@ -21,14 +21,42 @@ public class ZeldaSetupActivity extends Activity {
     private Button play,importButton,imageButton;
     private ProgressBar progress;
     private boolean busy;
+    private RomImporter.Region region;
+    private RomImporter.Region pendingExportRegion;
     private int dp(float v) { return Math.round(v*getResources().getDisplayMetrics().density); }
-    private File rom() { return new File(getFilesDir(),"roms/minishcap_usa.gba"); }
+    private File rom() {
+        String selected=getSharedPreferences("minish",MODE_PRIVATE).getString("rom_region","usa");
+        return new File(getFilesDir(),"eu".equals(selected)?
+            RomImporter.Region.EUROPE.romPath():RomImporter.Region.USA.romPath());
+    }
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        if(state!=null) {
+            String pending=state.getString("pending_export_region");
+            for(RomImporter.Region candidate:RomImporter.Region.values())
+                if(candidate.id.equals(pending)) pendingExportRegion=candidate;
+        }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         build();
     }
-    @Override protected void onResume() { super.onResume(); if(status!=null && !busy) update(); }
+    @Override protected void onSaveInstanceState(Bundle state) {
+        if(pendingExportRegion!=null) state.putString("pending_export_region",pendingExportRegion.id);
+        super.onSaveInstanceState(state);
+    }
+    @Override protected void onResume() {
+        super.onResume();
+        if(status==null || busy) return;
+        busy=true; update();
+        worker.execute(()->{
+            RomImporter.Region detected=null;
+            try { detected=RomImporter.identify(rom()); } catch(IOException ignored) { }
+            final RomImporter.Region verified=detected;
+            runOnUiThread(()->{
+                if(isFinishing() || isDestroyed()) return;
+                region=verified; busy=false; update();
+            });
+        });
+    }
     private TextView text(String s,int size,int color) {
         TextView t=new TextView(this); t.setText(s); t.setTextSize(size); t.setTextColor(color);
         t.setLineSpacing(dp(3),1); return t;
@@ -95,11 +123,12 @@ public class ZeldaSetupActivity extends Activity {
     private void update() {
         if(imageButton!=null) imageButton.setText("Imagem  ·  "+
             (getSharedPreferences("minish",MODE_PRIVATE).getInt("pixel_mode",1)==0?"Pixel perfeito":"Suave"));
-        boolean ready=rom().isFile() && rom().length()==RomImporter.SIZE;
+        boolean ready=region!=null;
         play.setEnabled(ready && !busy); play.setAlpha(ready?1:.4f);
         importButton.setEnabled(!busy);
-        if(!busy) status.setText(ready?"ROM USA verificada e salva no aparelho. Pode remover o arquivo original após a importação.":
-            "Importe sua cópia de The Minish Cap (USA). A verificação acontece no aparelho, sem envio de arquivos.");
+        if(!busy) status.setText(ready?"ROM "+region.label+" verificada e salva no aparelho."+
+            (region==RomImporter.Region.EUROPE?" Selecione Español nas opções de idioma do jogo.":""):
+            "Importe sua cópia de The Minish Cap (USA ou Europe). A verificação acontece no aparelho, sem envio de arquivos.");
     }
     private void pickRom() {
         Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE);
@@ -107,7 +136,9 @@ public class ZeldaSetupActivity extends Activity {
         startActivityForResult(i,PICK_ROM);
     }
     private void launchGame() {
+        if(region==null || busy) return;
         Intent i=new Intent(this,ZeldaGameActivity.class);
+        i.putExtra("rom_region",region.id);
         // Exported launcher accepts only a boolean QA flag; no file paths/commands.
         if(getIntent().getBooleanExtra("qa",false)) {
             i.putExtra("qa",true);
@@ -117,27 +148,39 @@ public class ZeldaSetupActivity extends Activity {
     }
     @Override protected void onActivityResult(int request,int result,Intent data) {
         super.onActivityResult(request,result,data);
+        final RomImporter.Region exportRegion=pendingExportRegion;
+        if(request==EXPORT_SAVE) pendingExportRegion=null;
         if(result!=RESULT_OK || data==null || data.getData()==null) return;
         Uri uri=data.getData();
         if(request==PICK_ROM) {
             busy=true; update(); status.setText("Importando e verificando a ROM…"); progress.setVisibility(View.VISIBLE);
             worker.execute(()->{
                 String error=null;
+                RomImporter.Region detected=null;
                 try(InputStream input=getContentResolver().openInputStream(uri)) {
                     if(input==null) throw new IOException("Não foi possível abrir esse arquivo.");
-                    RomImporter.importRom(input,rom());
+                    detected=RomImporter.importToLibrary(input,new File(getFilesDir(),"roms"));
+                    if(!getSharedPreferences("minish",MODE_PRIVATE).edit().putString("rom_region",detected.id).commit())
+                        throw new IOException("ROM importada; não foi possível salvar a seleção de região. Tente novamente.");
                 } catch(Exception e) { error=e.getMessage(); }
                 final String message=error;
+                final RomImporter.Region verified=detected;
                 runOnUiThread(()->{
                     if(isFinishing() || isDestroyed()) return;
+                    if(verified!=null) region=verified;
                     busy=false; progress.setVisibility(View.GONE); update();
                     if(message!=null) new AlertDialog.Builder(this).setTitle("Não foi possível importar")
                         .setMessage(message).setPositiveButton("Entendi",null).show();
                 });
             });
         } else if(request==EXPORT_SAVE) {
+            if(exportRegion==null) {
+                Toast.makeText(this,"Seleção de exportação perdida. Exporte o save novamente.",Toast.LENGTH_LONG).show();
+                return;
+            }
+            final File exportFile=new File(getFilesDir(),exportRegion.savePath);
             worker.execute(()->{
-                try(InputStream in=new FileInputStream(new File(getFilesDir(),"saves/minishcap.sav"));
+                try(InputStream in=new FileInputStream(exportFile);
                     OutputStream out=getContentResolver().openOutputStream(uri,"wt")) {
                     if(out==null) throw new IOException("Não foi possível abrir o destino.");
                     byte[] b=new byte[8192]; int n; while((n=in.read(b))!=-1) out.write(b,0,n);
@@ -147,16 +190,24 @@ public class ZeldaSetupActivity extends Activity {
         }
     }
     private void exportSave() {
-        if(!new File(getFilesDir(),"saves/minishcap.sav").isFile()) {
+        if(busy || region==null) return;
+        if(!new File(getFilesDir(),region.savePath).isFile()) {
             new AlertDialog.Builder(this).setMessage("Salve seu progresso dentro do jogo primeiro. Os estados rápidos ficam no menu durante a partida.")
                 .setPositiveButton("Entendi",null).show(); return;
         }
         Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("application/octet-stream");
-        i.addCategory(Intent.CATEGORY_OPENABLE); i.putExtra(Intent.EXTRA_TITLE,"MinishCap.sav"); startActivityForResult(i,EXPORT_SAVE);
+        i.addCategory(Intent.CATEGORY_OPENABLE); i.putExtra(Intent.EXTRA_TITLE,
+            region==RomImporter.Region.EUROPE?"MinishCap-Europe.sav":"MinishCap.sav");
+        pendingExportRegion=region;
+        startActivityForResult(i,EXPORT_SAVE);
     }
     private void controls() {
         LinearLayout panel=new LinearLayout(this); panel.setOrientation(LinearLayout.VERTICAL); panel.setPadding(dp(24),dp(8),dp(24),0);
-        panel.addView(text("Direcional: mover · A/B: ações\nL/R: ações secundárias · START: inventário\nNo inventário: Itens → R → Álbum de Hyrule\nÁlbum: direcional seleciona · A abre a foto ou a câmera\nCâmera: A fotografa a última cena do jogo · B volta ao álbum\nL/R troca de aba · START fecha o inventário\nAlgumas cenas não permitem abrir o inventário.\nMENU ou Voltar: pausa, estados rápidos e gerenciamento de fotos\nOs ícones são decorativos; as letras identificam os botões.\nControles Bluetooth/USB também são aceitos pelo runtime.",13,TEXT));
+        panel.addView(text("Direcional: mover · A/B: ações\nL/R: ações secundárias · START: inventário\n"+
+            (region==RomImporter.Region.EUROPE?
+             "Europe: escolha Español nas opções de idioma do jogo.\nA página do álbum no inventário está disponível na ROM USA.\n":
+             "No inventário: Itens → R → Álbum de Hyrule\nÁlbum: direcional seleciona · A abre a foto ou a câmera\nCâmera: A fotografa a última cena do jogo · B volta ao álbum\nL/R troca de aba · START fecha o inventário\n")+
+            "Algumas cenas não permitem abrir o inventário.\nMENU ou Voltar: pausa, estados rápidos e gerenciamento de fotos\nOs ícones são decorativos; as letras identificam os botões.\nControles Bluetooth/USB também são aceitos pelo runtime.",13,TEXT));
         slider(panel,"Tamanho", "touch_size",80,130,100,"%");
         slider(panel,"Opacidade", "touch_opacity",30,90,70,"%");
         android.content.SharedPreferences prefs=getSharedPreferences("minish",MODE_PRIVATE);

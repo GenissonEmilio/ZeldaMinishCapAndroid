@@ -1,14 +1,16 @@
 plugins { id 'com.android.application' }
 ext.gbaGame = [
-    applicationId: 'io.github.genissonemilio.minishcap', versionCode: 5, versionName: '0.3.1',
-    title: 'Minish Cap', romSha1: ['b4bd50e4131b027c334547b4524e2dbbd4227130'],
+    applicationId: 'io.github.genissonemilio.minishcap', versionCode: 6, versionName: '0.4.0',
+    title: 'Minish Cap', romSha1: ['b4bd50e4131b027c334547b4524e2dbbd4227130',
+                                'cff199b36ff173fb6faf152653d1bccf87c26fb7'],
     romSize: 16777216, romFile: 'minishcap_usa.gba', variant: 'minishcap',
     biosRequired: false, biosSha1: '2e41f9d30ecdf1c4540edf89ac16f49bf327edb7',
     gameToml: rootProject.file('game_android.toml'), gameRoot: rootProject.file('..'),
     engineRoot: rootProject.file('../gbarecomp'), recompUiRoot: rootProject.file('../recomp-ui'),
-    payloadVersion: '1', orientation: 'landscape', debugAbis: ['arm64-v8a'], nativeJobs: 2,
+    payloadVersion: '2', orientation: 'landscape', debugAbis: ['arm64-v8a'], nativeJobs: 2,
     payloadDirs: [[from: rootProject.file('firmware'), into: 'bios'],
-                  [from: rootProject.file('../mods/preloaded'), into: 'mods']]
+                  [from: rootProject.file('../mods/preloaded'), into: 'mods'],
+                  [from: rootProject.file('eu-variant'), into: 'variants/minishcap_eu']]
 ]
 apply from: '../../gbarecomp/platform/android/gbarecomp-app.gradle'
 apply from: '../sdl-java.gradle'
@@ -16,15 +18,22 @@ android {
     buildToolsVersion '35.0.0'
     defaultConfig {
         def albumTest = providers.gradleProperty('minishAlbumTest').orNull == 'true'
-        if (albumTest) applicationIdSuffix '.albumtest'
-        manifestPlaceholders.minishAppLabel = albumTest ? 'Minish Cap - Album teste' : '@string/app_name'
+        def regionTest = providers.gradleProperty('minishRegionTest').orNull == 'true'
+        if (regionTest) applicationIdSuffix '.regiontest'
+        else if (albumTest) applicationIdSuffix '.albumtest'
+        manifestPlaceholders.minishAppLabel = regionTest ? 'Minish Cap - EU teste' :
+            (albumTest ? 'Minish Cap - Album teste' : '@string/app_name')
     }
     buildFeatures.buildConfig = true
+    buildTypes.release.debuggable = providers.gradleProperty('minishRegionTest').orNull == 'true'
     ndkVersion '28.2.13676358'
     externalNativeBuild.cmake.version '3.31.6'
     sourceSets.main {
         manifest.srcFile 'src/main/AndroidManifest.xml'
         java.srcDir 'src/main/java'
+    }
+    if (providers.gradleProperty('minishRegionTest').orNull == 'true') {
+        sourceSets.release.manifest.srcFile rootProject.file('region-test/AndroidManifest.xml')
     }
     lint {
         disable 'ExpiredTargetSdkVersion'

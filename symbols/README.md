@@ -1,5 +1,14 @@
 # symbols/
 
+`eu/` contains independent metadata for the European BZMP revision 0 ROM.
+`eu/provenance.json` records the pinned zeldaret/tmc revision and the SHA-1
+of the byte-matching reconstructed ROM. Regenerate it with
+`tools/import_tmc_symbols/import_eu_symbols.py` after building that revision
+for EU; it never imports the decompilation's C source into the port.
+Pass `eu/minishcap_eu.toml`, then `eu/minishcap_eu_symbols.toml`, and the EU
+TSVs to `gba_recompile --output-prefix eu_`. Never layer the USA reviewed
+overlay onto Europe. See `ANDROID.md` for the complete generation command.
+
 Imported symbol map for Minish Cap. Files in here are produced by
 `tools/import_tmc_symbols/`; do not hand-edit unless explicitly
 adding a symbol the decomp doesn't yet have.

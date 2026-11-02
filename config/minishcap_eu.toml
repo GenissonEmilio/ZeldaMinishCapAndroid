@@ -1,0 +1,8 @@
+# Original BZMP revision 0, 16,777,216 bytes, verified against the owner ROM.
+[rom]
+sha1 = "cff199b36ff173fb6faf152653d1bccf87c26fb7"
+crc32 = "0xE8637292"
+[save]
+type = "eeprom"
+size = "0x2000"
+[quirks]

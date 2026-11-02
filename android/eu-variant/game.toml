@@ -1,0 +1,21 @@
+[game]
+name = "The Legend of Zelda: The Minish Cap (Europe)"
+short_name = "minish_cap"
+default_region = "eu"
+[bios]
+path = "bios/open_gba_bios.firmware"
+sha1 = "2e41f9d30ecdf1c4540edf89ac16f49bf327edb7"
+[rom]
+path = "roms/minishcap_eu.gba"
+sha1 = "cff199b36ff173fb6faf152653d1bccf87c26fb7"
+[save]
+type = "eeprom"
+size = "0x2000"
+path = "saves/minishcap_eu.sav"
+[video]
+screen = "backlit"
+[audio]
+shadow = false
+[runtime]
+window_title = "Minish Cap (Europe)"
+debug_port = 19842

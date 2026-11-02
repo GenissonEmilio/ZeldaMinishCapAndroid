@@ -34,16 +34,19 @@ public class ZeldaGameActivity extends GbaGameActivity {
     }
     @Override protected String[] getArguments() {
         SharedPreferences p=getSharedPreferences("minish",MODE_PRIVATE);
+        RomImporter.Region region="eu".equals(getIntent().getStringExtra("rom_region"))?
+            RomImporter.Region.EUROPE:RomImporter.Region.USA;
         ArrayList<String> args=new ArrayList<>(Arrays.asList(
-            "--rom",getFilesDir()+"/roms/minishcap_usa.gba",
+            "--minish-region",region.id,
+            "--rom",getFilesDir()+"/"+region.romPath(),
             "--bios",getFilesDir()+"/bios/open_gba_bios.firmware",
-            "--save",getFilesDir()+"/saves/minishcap.sav",
+            "--save",getFilesDir()+"/"+region.savePath,
             "--window","--bios-skip-intro",
             "--volume",p.getBoolean("sound",true)?"100":"0",
             "--touch-size",String.valueOf(p.getInt("touch_size",100)),
             "--touch-opacity",String.valueOf(p.getInt("touch_opacity",70)),
             "--pixel-mode",String.valueOf(p.getInt("pixel_mode",1)),
-            "variants/minishcap/game.toml"));
+            region.configPath));
         // ADB QA builds alone expose the local observer and dummy audio sink.
         if ((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)!=0
                 && getIntent().getBooleanExtra("qa",false)) {

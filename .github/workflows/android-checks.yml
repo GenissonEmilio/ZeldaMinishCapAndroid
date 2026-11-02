@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -19,6 +21,11 @@ jobs:
           distribution: temurin
           java-version: '21'
       - run: python3 tools/android/check_sources.py
+      - name: Verify region dispatch, symbols and executable RAM stay isolated
+        run: |
+          mkdir -p build/region-test
+          g++ -std=c++17 -O2 -Wall -Wextra -Isrc -Igbarecomp/src/armv4t tests/rom_regions_test.cpp src/rom_regions.cpp gbarecomp/src/armv4t/symbol_lookup.cpp -o build/region-test/check
+          build/region-test/check
       - name: Verify in-game album navigation and clean camera capture
         run: |
           mkdir -p build/photo-test
